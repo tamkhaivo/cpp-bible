@@ -189,6 +189,9 @@ void demo() {
 } // namespace Lists
 
 namespace Lambdas {
+// whenever we have a lambda that runs on a different thread, consider if the
+// lambda will outlive the parent. If so, capture by value(=) instead of
+// reference(&)
 
 void demo() {
   cout << "\n--- Lambdas Demo ---\n";
