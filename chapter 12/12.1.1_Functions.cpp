@@ -3,9 +3,7 @@
 #include <cstdarg>
 #include <initializer_list>
 #include <iostream>
-#include <limits>
 #include <string>
-#include <vector>
 
 using namespace std;
 
@@ -217,11 +215,96 @@ void demo() {
 
   // Macro side-effect pitfall
   int x = 5;
-  int y = MAX_MACRO(++x, 0); // ++x evaluated twice!
+  int y =
+      MAX_MACRO(++x, 0); // ++x evaluated twice! - (((++x > 0) ? (++x) : (0)))
   cout << "Macro side-effect (x expected 6): " << x << endl;
 }
 
 } // namespace PointersAndMacros
+
+// 12.6.1 Conditional Compilation
+namespace ConditionalCompilation {
+
+// The text example: Confusing macro usage (commented out to avoid breaking real
+// builds if someone defines it, but shown for educational purposes)
+/*
+int f(int a
+#ifdef arg_two
+,int b
+#endif
+);
+*/
+
+void demo() {
+  cout << "\n--- ConditionalCompilation Demo ---\n";
+  cout << "Demonstrating #ifdef behavior:\n";
+
+#ifdef MY_DEBUG_MACRO
+  cout << "MY_DEBUG_MACRO is defined.\n";
+#else
+  cout << "MY_DEBUG_MACRO is NOT defined.\n";
+#endif
+
+  // Example: Using a macro value with #if to trigger #else
+#define FEATURE_VERSION 1
+#if FEATURE_VERSION > 2
+  cout << "Running bleeding edge features.\n";
+#else
+  cout << "Running standard features (triggered else because FEATURE_VERSION "
+          "<= 2).\n";
+#endif
+
+// Safe macro naming example from text
+#define MY_LIB_ARG_TWO x
+  struct Call_info {
+    int *arg_one;
+    int *arg_two; // Could clash if arg_two was defined as a macro!
+  };
+  // Ideally, use long, unique names for macros to avoid this.
+  cout
+      << "(See source for examples of confusing macros vs safe struct names)\n";
+}
+
+} // namespace ConditionalCompilation
+
+// 12.6.2 Predefined Macros
+namespace PredefinedMacros {
+
+void demo() {
+  cout << "\n--- PredefinedMacros Demo ---\n";
+  cout << "__cplusplus: " << __cplusplus << endl;
+  cout << "__DATE__: " << __DATE__ << endl;
+  cout << "__TIME__: " << __TIME__ << endl;
+  cout << "__FILE__: " << __FILE__ << endl;
+  cout << "__LINE__: " << __LINE__ << endl;
+  // __FUNC__ is implementation defined, __func__ is standard in C++11
+  cout << "__func__: " << __func__ << endl;
+
+#ifdef __STDC_HOSTED__
+  cout << "__STDC_HOSTED__: " << __STDC_HOSTED__ << endl;
+#endif
+
+#ifdef __STDCPP_THREADS__
+  cout << "__STDCPP_THREADS__: " << __STDCPP_THREADS__ << endl;
+#endif
+}
+
+} // namespace PredefinedMacros
+
+// 12.6.3 Pragmas
+namespace Pragmas {
+
+// #pragma foo bar 666 foobar
+// Implementation specific. Best avoided if possible.
+
+void demo() {
+  cout << "\n--- Pragmas Demo ---\n";
+  cout << "Pragmas are implementation-specific directives.\n";
+  cout << "Example: #pragma once (commonly used for header guards)\n";
+  cout << "If possible, #pragmas are best avoided for portability.\n";
+}
+
+} // namespace Pragmas
 
 int main() {
   try {
@@ -230,6 +313,9 @@ int main() {
     Overloading::demo();
     Conditions::demo();
     PointersAndMacros::demo();
+    ConditionalCompilation::demo();
+    PredefinedMacros::demo();
+    Pragmas::demo();
   } catch (const std::exception &e) {
     std::cerr << "Unhandled Exception: " << e.what() << std::endl;
     return 1;
