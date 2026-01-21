@@ -10,6 +10,7 @@
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using namespace std;
@@ -252,6 +253,105 @@ void demo() {
 
 } // namespace ExplicitConversions
 
+namespace ComplexArena {
+
+struct ComplexClass {
+  int id;
+  ComplexClass(int i) : id{i} {
+    cout << "ComplexClass constructed: " << id << endl;
+  }
+  ~ComplexClass() { cout << "ComplexClass destroyed: " << id << endl; }
+};
+
+struct Struct {
+  int x, y;
+};
+
+// Arena for managing destructors
+class DestructorArena {
+  struct DtorEntry {
+    void (*dtor)(void *);
+    void *obj;
+  };
+  // Preallocated memory for destructors
+  alignas(std::max_align_t) char storage[1024];
+  size_t count = 0;
+  const size_t capacity = sizeof(storage) / sizeof(DtorEntry);
+
+public:
+  void add(void *obj, void (*dtor)(void *)) {
+    if (count < capacity) {
+      DtorEntry *entry = reinterpret_cast<DtorEntry *>(storage) + count;
+      entry->obj = obj;
+      entry->dtor = dtor;
+      count++;
+    } else {
+      cerr << "DestructorArena full!" << endl;
+    }
+  }
+
+  void clear() {
+    // Destroy in reverse order of creation
+    while (count > 0) {
+      count--;
+      DtorEntry *entry = reinterpret_cast<DtorEntry *>(storage) + count;
+      entry->dtor(entry->obj);
+    }
+  }
+  ~DestructorArena() { clear(); }
+};
+
+// Arena for memory allocation
+class Arena {
+  alignas(std::max_align_t) char storage[1024]; // Preallocated 1024 bytes
+  size_t used = 0;
+  DestructorArena &dtorArena;
+ 
+public:
+  Arena(DestructorArena &da) : dtorArena(da) {}
+
+  template <typename T, typename... Args> T *make(Args &&...args) {
+    size_t space_remaining = sizeof(storage) - used;
+    void *p = storage + used;
+
+    // Check if there is enough space (including alignment)
+    if (std::align(alignof(T), sizeof(T), p, space_remaining)) {
+      used = (char *)p - storage + sizeof(T);
+      T *obj = new (p) T(std::forward<Args>(args)...);
+
+      // Register destructor if T is not trivially destructible
+      if constexpr (!std::is_trivially_destructible<T>::value) {
+        dtorArena.add(obj, [](void *ptr) { static_cast<T *>(ptr)->~T(); });
+      }
+      return obj;
+    }
+    return nullptr;
+  }
+};
+
+void demo() {
+  cout << "\n--- ComplexArena Demo ---\n";
+
+  DestructorArena da;
+  Arena arena(da);
+
+  // Allocate ComplexClass (has destructor)
+  auto *c1 = arena.make<ComplexClass>(1);
+  auto *c2 = arena.make<ComplexClass>(2);
+
+  // Allocate Struct (trivially destructible, no destructor registered)
+  auto *s1 = arena.make<Struct>();
+  if (s1) {
+    s1->x = 10;
+    s1->y = 20;
+    cout << "Struct allocated: " << s1->x << ", " << s1->y << endl;
+  }
+
+  cout << "End of demo scope. Destructors should fire now.\n";
+}
+
+} // namespace ComplexArena
+
 int main() {
   try {
     EtcOperators::demo();
@@ -259,6 +359,7 @@ int main() {
     Lists::demo();
     Lambdas::demo();
     ExplicitConversions::demo();
+    ComplexArena::demo();
   } catch (const exception &e) {
     cerr << "Exception: " << e.what() << endl;
   }
