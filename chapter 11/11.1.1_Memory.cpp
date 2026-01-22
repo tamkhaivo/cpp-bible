@@ -7,7 +7,6 @@
 #include <initializer_list>
 #include <iostream>
 #include <map>
-#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -407,6 +406,67 @@ void demo() {
 
 } // namespace UniquePtrArena
 
+namespace StackArena {
+
+// Arena that uses a provided buffer (e.g., on the stack)
+class Arena {
+  char *const buffer;
+  const size_t size;
+  size_t offset = 0;
+
+public:
+  Arena(char *buf, size_t s) : buffer(buf), size(s) {}
+
+  template <typename T, typename... Args> T *make(Args &&...args) {
+    size_t space_remaining = size - offset;
+    void *ptr = buffer + offset;
+
+    if (std::align(alignof(T), sizeof(T), ptr, space_remaining)) {
+      offset = (char *)ptr - buffer + sizeof(T);
+      return new (ptr) T(std::forward<Args>(args)...);
+    }
+    return nullptr;
+  }
+};
+
+struct Point {
+  int x, y, z;
+  Point(int x_, int y_, int z_) : x(x_), y(y_), z(z_) {}
+};
+
+void demo() {
+  cout << "\n--- StackArena Demo ---\n";
+
+  // 1. Allocate buffer ON THE STACK
+  char stackBuffer[1024];
+  cout << "Stack buffer address: " << (void *)stackBuffer << endl;
+
+  // 2. Initialize arena with stack buffer
+  Arena arena(stackBuffer, sizeof(stackBuffer));
+
+  // 3. Allocate objects
+  Point *p1 = arena.make<Point>(1, 2, 3);
+  Point *p2 = arena.make<Point>(4, 5, 6);
+
+  if (p1 && p2) {
+    cout << "Point 1 allocated at: " << p1 << " (" << p1->x << ", " << p1->y
+         << ", " << p1->z << ")\n";
+    cout << "Point 2 allocated at: " << p2 << " (" << p2->x << ", " << p2->y
+         << ", " << p2->z << ")\n";
+
+    // Demonstrate locality
+    cout << "Distance between p1 and buffer start: " << (char *)p1 - stackBuffer
+         << " bytes\n";
+  }
+
+  // No delete needed because memory is on the stack and automatically reclaimed
+  // when stackBuffer goes out of scope. Note: If Point had a destructor, we'd
+  // need to manually call it or use a mechanism like UniquePtrArena to handle
+  // it!
+}
+
+} // namespace StackArena
+
 int main() {
   try {
     EtcOperators::demo();
@@ -416,6 +476,7 @@ int main() {
     ExplicitConversions::demo();
     ComplexArena::demo();
     UniquePtrArena::demo();
+    StackArena::demo();
   } catch (const exception &e) {
     cerr << "Exception: " << e.what() << endl;
   }
