@@ -7,6 +7,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -306,7 +307,7 @@ class Arena {
   alignas(std::max_align_t) char storage[1024]; // Preallocated 1024 bytes
   size_t used = 0;
   DestructorArena &dtorArena;
- 
+
 public:
   Arena(DestructorArena &da) : dtorArena(da) {}
 
@@ -352,6 +353,60 @@ void demo() {
 
 } // namespace ComplexArena
 
+namespace UniquePtrArena {
+
+struct Widget {
+  int value;
+  Widget(int v) : value(v) { cout << "Widget constructed: " << value << endl; }
+  ~Widget() { cout << "Widget destroyed: " << value << endl; }
+};
+
+class Arena {
+  alignas(std::max_align_t) char buffer[2048];
+  size_t offset = 0;
+
+public:
+  // Allocates raw memory for T
+  template <typename T> T *allocate() {
+    size_t space_remaining = sizeof(buffer) - offset;
+    void *ptr = buffer + offset;
+    if (std::align(alignof(T), sizeof(T), ptr, space_remaining)) {
+      offset = (char *)ptr - buffer + sizeof(T);
+      return static_cast<T *>(ptr);
+    }
+    return nullptr;
+  }
+
+  // Creates a unique_ptr managed object in the arena
+  template <typename T, typename... Args> auto make(Args &&...args) {
+    T *ptr = allocate<T>();
+    if (!ptr) {
+      throw std::bad_alloc();
+    }
+    new (ptr) T(std::forward<Args>(args)...);
+
+    // Custom deleter: Calls destructor, does NOT free memory
+    auto deleter = [](T *p) { p->~T(); };
+
+    return std::unique_ptr<T, decltype(deleter)>(ptr, deleter);
+  }
+};
+
+void demo() {
+  cout << "\n--- UniquePtrArena Demo ---\n";
+  Arena arena;
+
+  {
+    auto w1 = arena.make<Widget>(100);
+    auto w2 = arena.make<Widget>(200);
+    cout << "Inside scope: Widgets created.\n";
+  } // w1, w2 go out of scope here -> destructors called automatically
+
+  cout << "Outside scope: Widgets should be destroyed.\n";
+}
+
+} // namespace UniquePtrArena
+
 int main() {
   try {
     EtcOperators::demo();
@@ -360,6 +415,7 @@ int main() {
     Lambdas::demo();
     ExplicitConversions::demo();
     ComplexArena::demo();
+    UniquePtrArena::demo();
   } catch (const exception &e) {
     cerr << "Exception: " << e.what() << endl;
   }
